@@ -8,41 +8,48 @@ app.use(cors());
 
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
-    const url = `https://assistir.biz/filme/${slug}`;
+    const urlOriginal = `https://assistir.biz/filme/${slug}`;
 
     try {
-        const { data } = await axios.get(url, {
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-            }
-        });
+        // 1. Pega a página do filme
+        const resp1 = await axios.get(urlOriginal, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const $1 = cheerio.load(resp1.data);
         
-        const $ = cheerio.load(data);
-        let playerUrl = "";
+        // 2. Acha o link do iframe do player
+        let iframeUrl = $1('iframe').attr('src');
+        if (iframeUrl && iframeUrl.startsWith('//')) iframeUrl = 'https:' + iframeUrl;
 
-        // Procura todos os iframes e descarta redes sociais
-        $('iframe').each((i, el) => {
-            const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
-                playerUrl = src;
-            }
-        });
+        if (!iframeUrl) return res.status(404).json({ success: false, message: "Player não encontrado" });
 
-        // Se ainda não achou, tenta pegar o link de botões específicos
-        if (!playerUrl) {
-            playerUrl = $('.do-play-button').attr('data-url') || $('.player-option').attr('data-url');
-        }
+        // 3. ENTRANDO NO IFRAME (A mágica acontece aqui)
+        // Vamos tentar ler o código de dentro do player para achar o arquivo de vídeo
+        const resp2 = await axios.get(iframeUrl, { headers: { 'Referer': urlOriginal, 'User-Agent': 'Mozilla/5.0' } });
+        
+        // Procuramos por links que terminam em .mp4 ou .m3u8 no código fonte
+        const regexVideo = /file":"(.*?)"/g; 
+        const match = regexVideo.exec(resp2.data);
+        
+        let videoDireto = match ? match[1].replace(/\\/g, '') : null;
 
-        if (playerUrl) {
-            if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
-            res.json({ success: true, url: playerUrl });
+        if (videoDireto) {
+            res.json({
+                success: true,
+                url: videoDireto,
+                type: videoDireto.includes('m3u8') ? 'hls' : 'mp4',
+                note: "Link direto extraído com sucesso!"
+            });
         } else {
-            res.status(404).json({ success: false, message: "Não encontrei o player de vídeo." });
+            // Se não achamos o MP4 puro, devolvemos o iframe mas avisamos
+            res.json({
+                success: true,
+                url: iframeUrl,
+                note: "Não foi possível limpar 100%, retornando player padrão."
+            });
         }
     } catch (e) {
-        res.status(500).json({ success: false, message: "Erro ao acessar o site." });
+        res.status(500).json({ success: false, message: "Erro na extração profunda." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor recalibrado!"));
+app.listen(PORT, () => console.log("Motor de extração limpa pronto!"));
