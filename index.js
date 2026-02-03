@@ -16,29 +16,33 @@ app.get('/movie/:slug', async (req, res) => {
         });
         const $ = cheerio.load(resp1.data);
         
-        // Buscamos o iframe, mas agora olhamos também o 'data-src'
-        let playerUrl = $('iframe').attr('src') || $('iframe').attr('data-src');
+        let playerUrl = "";
 
-        // Se o link for interno do site, tentamos entrar nele
-        if (playerUrl && playerUrl.includes('assistir.biz/iframe')) {
+        // Analisa todos os iframes e descarta Facebook, Google e redes sociais
+        $('iframe').each((i, el) => {
+            const src = $(el).attr('src') || $(el).attr('data-src');
+            if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
+                playerUrl = src;
+            }
+        });
+
+        if (playerUrl) {
             if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
             
+            // Tenta extrair o vídeo real de dentro do iframe encontrado
             const resp2 = await axios.get(playerUrl, { headers: { 'Referer': urlOriginal } });
-            
-            // Procuramos por links de servidores de vídeo comuns (.mp4 ou .m3u8)
             const regex = /(https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)/i;
             const match = resp2.data.match(regex);
             
             if (match) {
+                // Se achou o arquivo bruto (.mp4 ou .m3u8), entrega o link limpo
                 return res.json({ success: true, url: match[1], type: "direct" });
             }
-        }
 
-        if (playerUrl) {
-            if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
+            // Se não achou o bruto, entrega pelo menos o link do player sem o Facebook
             res.json({ success: true, url: playerUrl, type: "iframe" });
         } else {
-            res.status(404).json({ success: false, message: "Não foi possível limpar o vídeo." });
+            res.status(404).json({ success: false, message: "Vídeo não encontrado." });
         }
     } catch (e) {
         res.status(500).json({ success: false, message: "Erro de conexão." });
@@ -46,4 +50,4 @@ app.get('/movie/:slug', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor recalibrado"));
+app.listen(PORT, () => console.log("Motor recalibrado para links limpos"));
