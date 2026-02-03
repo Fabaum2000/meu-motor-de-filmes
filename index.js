@@ -13,37 +13,36 @@ app.get('/movie/:slug', async (req, res) => {
     try {
         const { data } = await axios.get(url, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept-Language': 'pt-BR,pt;q=0.9'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
             }
         });
         
         const $ = cheerio.load(data);
-        
-        // Tentativa 1: Iframe padrão
-        let playerUrl = $('iframe').attr('src') || $('iframe').attr('data-src');
-        
-        // Tentativa 2: Procurar dentro de botões de player (comum nesse site)
-        if (!playerUrl || playerUrl.includes('about:blank')) {
-            playerUrl = $('.do-play-button').attr('data-url') || $('.player-option').attr('data-url');
+        let playerUrl = "";
+
+        // Nova lógica: Procurar por iframes que NÃO sejam do Facebook ou Google
+        $('iframe').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
+                playerUrl = src;
+            }
+        });
+
+        // Se ainda não achou, tenta pegar o link de um botão específico de player
+        if (!playerUrl) {
+            playerUrl = $('.do-play-button').attr('data-url');
         }
 
         if (playerUrl) {
             if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
-            
-            // Se o link for um redirecionamento interno do site, avisamos
-            res.json({ 
-                success: true, 
-                url: playerUrl,
-                note: "Link capturado com sucesso." 
-            });
+            res.json({ success: true, url: playerUrl });
         } else {
-            res.status(404).json({ success: false, message: "O site mudou a estrutura do player." });
+            res.status(404).json({ success: false, message: "Não encontrei o player de vídeo, apenas links de redes sociais." });
         }
     } catch (e) {
-        res.status(500).json({ success: false, message: "Não consegui acessar o site de origem." });
+        res.status(500).json({ success: false, message: "Erro ao acessar o site." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor atualizado!"));
+app.listen(PORT, () => console.log("Motor recalibrado!"));
