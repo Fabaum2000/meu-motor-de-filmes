@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
 const cors = require('cors');
 const app = express();
 
@@ -11,43 +10,43 @@ app.get('/movie/:slug', async (req, res) => {
     const urlOriginal = `https://assistir.biz/filme/${slug}`;
 
     try {
-        const resp1 = await axios.get(urlOriginal, { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } 
+        // Passo 1: Pegar o HTML do site
+        const { data: htmlPrincipal } = await axios.get(urlOriginal, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-        const $ = cheerio.load(resp1.data);
-        
-        let playerUrl = "";
 
-        // Analisa todos os iframes e descarta Facebook, Google e redes sociais
-        $('iframe').each((i, el) => {
-            const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
-                playerUrl = src;
-            }
-        });
+        // Passo 2: Achar o link do player (iframe)
+        const regexIframe = /<iframe.*?src=["'](.*?)["']/;
+        const matchIframe = htmlPrincipal.match(regexIframe);
+        let playerUrl = matchIframe ? matchIframe[1] : null;
 
         if (playerUrl) {
             if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
-            
-            // Tenta extrair o vídeo real de dentro do iframe encontrado
-            const resp2 = await axios.get(playerUrl, { headers: { 'Referer': urlOriginal } });
-            const regex = /(https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)/i;
-            const match = resp2.data.match(regex);
-            
-            if (match) {
-                // Se achou o arquivo bruto (.mp4 ou .m3u8), entrega o link limpo
-                return res.json({ success: true, url: match[1], type: "direct" });
-            }
 
-            // Se não achou o bruto, entrega pelo menos o link do player sem o Facebook
-            res.json({ success: true, url: playerUrl, type: "iframe" });
-        } else {
-            res.status(404).json({ success: false, message: "Vídeo não encontrado." });
+            // Passo 3: Entrar no Player e "farejar" o arquivo de vídeo (o Sniffer)
+            const { data: htmlPlayer } = await axios.get(playerUrl, {
+                headers: { 'Referer': urlOriginal, 'User-Agent': 'Mozilla/5.0' }
+            });
+
+            // Procuramos por links .m3u8 ou .mp4 (igual o Video DownloadHelper faz)
+            const regexVideo = /(https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)/i;
+            const matchVideo = htmlPlayer.match(regexVideo);
+
+            if (matchVideo) {
+                return res.json({
+                    success: true,
+                    url: matchVideo[1],
+                    type: matchVideo[1].includes('m3u8') ? 'hls' : 'mp4',
+                    method: 'sniffer_active'
+                });
+            }
         }
+
+        res.status(404).json({ success: false, message: "Vídeo não detectado." });
     } catch (e) {
-        res.status(500).json({ success: false, message: "Erro de conexão." });
+        res.status(500).json({ success: false, message: "Erro ao farejar vídeo." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor recalibrado para links limpos"));
+app.listen(PORT, () => console.log("Sniffer Online!"));
