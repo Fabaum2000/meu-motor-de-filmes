@@ -1,5 +1,5 @@
 const express = require('express');
-const axios = require('axios');
+const puppeteer = require('puppeteer');
 const cors = require('cors');
 const app = express();
 
@@ -8,45 +8,43 @@ app.use(cors());
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
     const urlOriginal = `https://assistir.biz/filme/${slug}`;
+    
+    // Abre o navegador invisível
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
     try {
-        // Passo 1: Pegar o HTML do site
-        const { data: htmlPrincipal } = await axios.get(urlOriginal, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
+        const page = await browser.newPage();
+        let videoLink = null;
+
+        // "Escuta" as requisições de rede (Igual o Video DownloadHelper)
+        page.on('request', request => {
+            const url = request.url();
+            // Se achar um link de vídeo, salva ele
+            if (url.includes('.m3u8') || url.includes('.mp4')) {
+                videoLink = url;
+            }
         });
 
-        // Passo 2: Achar o link do player (iframe)
-        const regexIframe = /<iframe.*?src=["'](.*?)["']/;
-        const matchIframe = htmlPrincipal.match(regexIframe);
-        let playerUrl = matchIframe ? matchIframe[1] : null;
+        // Entra no site e espera o player carregar
+        await page.goto(urlOriginal, { waitUntil: 'networkidle2', timeout: 60000 });
+        
+        // Espera um pouco para o script do player gerar o link
+        await new Promise(r => setTimeout(r, 5000));
 
-        if (playerUrl) {
-            if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
+        await browser.close();
 
-            // Passo 3: Entrar no Player e "farejar" o arquivo de vídeo (o Sniffer)
-            const { data: htmlPlayer } = await axios.get(playerUrl, {
-                headers: { 'Referer': urlOriginal, 'User-Agent': 'Mozilla/5.0' }
-            });
-
-            // Procuramos por links .m3u8 ou .mp4 (igual o Video DownloadHelper faz)
-            const regexVideo = /(https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)/i;
-            const matchVideo = htmlPlayer.match(regexVideo);
-
-            if (matchVideo) {
-                return res.json({
-                    success: true,
-                    url: matchVideo[1],
-                    type: matchVideo[1].includes('m3u8') ? 'hls' : 'mp4',
-                    method: 'sniffer_active'
-                });
-            }
+        if (videoLink) {
+            res.json({ success: true, url: videoLink, type: "direct_file" });
+        } else {
+            res.status(404).json({ success: false, message: "Não foi possível farejar o link direto." });
         }
-
-        res.status(404).json({ success: false, message: "Vídeo não detectado." });
     } catch (e) {
-        res.status(500).json({ success: false, message: "Erro ao farejar vídeo." });
+        await browser.close();
+        res.status(500).json({ success: false, message: "Erro no servidor de farejamento." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Sniffer Online!"));
+app.listen(PORT, () => console.log("Sniffer Profissional Online!"));
