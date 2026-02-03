@@ -20,24 +20,24 @@ app.get('/movie/:slug', async (req, res) => {
         const $ = cheerio.load(data);
         let playerUrl = "";
 
-        // Nova lógica: Procurar por iframes que NÃO sejam do Facebook ou Google
+        // Procura todos os iframes e descarta redes sociais
         $('iframe').each((i, el) => {
-            const src = $(el).attr('src');
+            const src = $(el).attr('src') || $(el).attr('data-src');
             if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
                 playerUrl = src;
             }
         });
 
-        // Se ainda não achou, tenta pegar o link de um botão específico de player
+        // Se ainda não achou, tenta pegar o link de botões específicos
         if (!playerUrl) {
-            playerUrl = $('.do-play-button').attr('data-url');
+            playerUrl = $('.do-play-button').attr('data-url') || $('.player-option').attr('data-url');
         }
 
         if (playerUrl) {
             if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
             res.json({ success: true, url: playerUrl });
         } else {
-            res.status(404).json({ success: false, message: "Não encontrei o player de vídeo, apenas links de redes sociais." });
+            res.status(404).json({ success: false, message: "Não encontrei o player de vídeo." });
         }
     } catch (e) {
         res.status(500).json({ success: false, message: "Erro ao acessar o site." });
