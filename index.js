@@ -1,55 +1,31 @@
 const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
 const cors = require('cors');
 const app = express();
 
 app.use(cors());
 
 app.get('/', (req, res) => {
-    res.send("<h1>Motor Superflix Online</h1><p>Use /filme/ID para buscar.</p>");
+    res.send("<h1>Motor de Filmes Profissional</h1>");
 });
 
-app.get('/filme/:id', async (req, res) => {
+app.get('/filme/:id', (req, res) => {
     const id = req.params.id;
-    const urlOriginal = `https://superflixapi.cv/filme/${id}`;
 
-    try {
-        const { data } = await axios.get(urlOriginal, {
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-            }
-        });
+    // Em vez de raspar, geramos os links oficiais de embed que esses sites usam
+    // O Superflix e o VidSrc aceitam o ID direto na URL
+    const links = {
+        superflix: `https://superflixapi.cv/api/movie/${id}`,
+        vidsrc: `https://vidsrc.to/embed/movie/${id}`,
+        embedplay: `https://embedplay.click/embed/movie/${id}`
+    };
 
-        const $ = cheerio.load(data);
-        let playerUrl = "";
-
-        // No Superflix, o player geralmente está no primeiro iframe ou em um botão de play
-        $('iframe').each((i, el) => {
-            const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook') && !src.includes('google')) {
-                playerUrl = src.startsWith('//') ? 'https:' + src : src;
-            }
-        });
-
-        if (playerUrl) {
-            return res.json({
-                success: true,
-                url: playerUrl,
-                origem: "Superflix"
-            });
-        }
-
-        res.status(404).json({ success: false, message: "Player nao encontrado." });
-
-    } catch (e) {
-        res.status(500).json({ 
-            success: false, 
-            message: "O site bloqueou o servidor da Render.",
-            status: e.response ? e.response.status : "Erro de Conexão"
-        });
-    }
+    res.json({
+        success: true,
+        id: id,
+        urls: links,
+        instrucao: "Escolha um dos links acima e coloque no src do seu iframe."
+    });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor Superflix Rodando!"));
+app.listen(PORT, () => console.log("Motor de Links Diretos Online!"));
