@@ -8,41 +8,47 @@ app.use(cors());
 
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
-    const url = `https://assistir.biz/filme/${slug}`;
+    const urlOriginal = `https://assistir.biz/filme/${slug}`;
 
     try {
-        const { data } = await axios.get(url, {
+        // 1. Pega a página com um disfarce de navegador (User-Agent)
+        const { data } = await axios.get(urlOriginal, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36' 
             }
         });
-        
+
         const $ = cheerio.load(data);
         let playerUrl = "";
 
-        // Procura todos os iframes e descarta redes sociais
+        // 2. Procura todos os iframes da página
         $('iframe').each((i, el) => {
             const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook.com') && !src.includes('google.com') && !src.includes('twitter.com')) {
-                playerUrl = src;
+            
+            // SÓ PEGA se o link tiver "player" ou "iframe" e NÃO tiver "facebook"
+            if (src && (src.includes('player') || src.includes('iframe')) && !src.includes('facebook')) {
+                playerUrl = src.startsWith('//') ? 'https:' + src : src;
             }
         });
 
-        // Se ainda não achou, tenta pegar o link de botões específicos
-        if (!playerUrl) {
-            playerUrl = $('.do-play-button').attr('data-url') || $('.player-option').attr('data-url');
+        if (playerUrl) {
+            res.json({
+                success: true,
+                url: playerUrl,
+                type: "iframe"
+            });
+        } else {
+            res.status(404).json({ success: false, message: "Link do player não encontrado na página." });
         }
 
-        if (playerUrl) {
-            if (playerUrl.startsWith('//')) playerUrl = 'https:' + playerUrl;
-            res.json({ success: true, url: playerUrl });
-        } else {
-            res.status(404).json({ success: false, message: "Não encontrei o player de vídeo." });
-        }
     } catch (e) {
-        res.status(500).json({ success: false, message: "Erro ao acessar o site." });
+        res.status(500).json({ 
+            success: false, 
+            message: "Erro ao acessar o site original. Verifique o slug.",
+            details: e.message 
+        });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor recalibrado!"));
+app.listen(PORT, () => console.log("Motor de Iframe Online!"));
