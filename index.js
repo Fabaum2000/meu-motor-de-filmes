@@ -6,29 +6,47 @@ const app = express();
 
 app.use(cors());
 
-// Se você acessar o link puro, tem que aparecer isso:
 app.get('/', (req, res) => {
-    res.send("<h1>API Conectada com Sucesso!</h1>");
+    res.send("<h1>Motor Pobreflix Online</h1>");
 });
 
-app.get('/filme/:id', async (req, res) => {
-    const id = req.params.id;
+app.get('/filme/:slug', async (req, res) => {
+    const slug = req.params.slug;
+    const urlOriginal = `https://pobreflixdublado.lat/filme/${slug}`;
+
     try {
-        const { data } = await axios.get(`https://embedplay.click/filme/${id}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
+        const { data } = await axios.get(urlOriginal, {
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36' 
+            }
         });
+
         const $ = cheerio.load(data);
-        const playerUrl = $('iframe').first().attr('src');
+        let playerUrl = "";
+
+        // O Pobreflix geralmente coloca o link em iframes ou atributos data-src
+        $('iframe, div[data-src]').each((i, el) => {
+            const src = $(el).attr('src') || $(el).attr('data-src');
+            
+            if (src && !src.includes('facebook') && !src.includes('google')) {
+                playerUrl = src.startsWith('//') ? 'https:' + src : src;
+            }
+        });
 
         if (playerUrl) {
-            res.json({ success: true, url: playerUrl.startsWith('//') ? 'https:' + playerUrl : playerUrl });
-        } else {
-            res.json({ success: false, message: "Não achei o player" });
+            return res.json({
+                success: true,
+                url: playerUrl,
+                origem: "Pobreflix"
+            });
         }
+
+        res.status(404).json({ success: false, message: "Player nao encontrado no Pobreflix." });
+
     } catch (e) {
-        res.json({ success: false, message: "Erro na busca" });
+        res.status(500).json({ success: false, message: "Erro ao acessar o site.", erro: e.message });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Ligado!"));
+app.listen(PORT, () => console.log("Servidor rodando!"));
