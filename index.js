@@ -6,38 +6,29 @@ const app = express();
 
 app.use(cors());
 
-// ROTA DE TESTE: Acesse apenas https://seu-app.onrender.com/
+// Se você acessar o link puro, tem que aparecer isso:
 app.get('/', (req, res) => {
-    res.send("<h1>API Online!</h1><p>Use /filme/ID_DO_IMDB para buscar.</p>");
+    res.send("<h1>API Conectada com Sucesso!</h1>");
 });
 
-// ROTA DO FILME
 app.get('/filme/:id', async (req, res) => {
     const id = req.params.id;
-    const urlOriginal = `https://embedplay.click/filme/${id}`;
-
     try {
-        const response = await axios.get(urlOriginal, {
+        const { data } = await axios.get(`https://embedplay.click/filme/${id}`, {
             headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-        const $ = cheerio.load(response.data);
-        let playerUrl = "";
-
-        $('iframe').each((i, el) => {
-            const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook')) {
-                playerUrl = src.startsWith('//') ? 'https:' + src : src;
-            }
-        });
+        const $ = cheerio.load(data);
+        const playerUrl = $('iframe').first().attr('src');
 
         if (playerUrl) {
-            return res.json({ success: true, url: playerUrl });
+            res.json({ success: true, url: playerUrl.startsWith('//') ? 'https:' + playerUrl : playerUrl });
+        } else {
+            res.json({ success: false, message: "Não achei o player" });
         }
-        res.status(404).json({ success: false, message: "Player não encontrado." });
     } catch (e) {
-        res.status(500).json({ success: false, message: "Erro na conexão." });
+        res.json({ success: false, message: "Erro na busca" });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor rodando!"));
+app.listen(PORT, () => console.log("Ligado!"));
