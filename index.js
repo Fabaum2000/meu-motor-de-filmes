@@ -8,45 +8,45 @@ app.use(cors());
 
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
-    
-    // Tentamos o link padrão que você usou
     const urlOriginal = `https://assistir.biz/filme/${slug}`;
+    
+    // Lista de proxies para tentar furar o bloqueio 404 da Render
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(urlOriginal)}`;
 
     try {
-        const response = await axios.get(urlOriginal, {
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Referer': 'https://www.google.com/', // Engana o servidor do site
-                'Accept-Language': 'pt-BR,pt;q=0.9'
-            },
-            timeout: 10000 // Espera no máximo 10 segundos
-        });
-
-        const $ = cheerio.load(response.data);
+        // Fazemos a requisição via Proxy (allOrigins)
+        const response = await axios.get(proxyUrl);
+        const html = response.data.contents; // O conteúdo vem dentro de 'contents'
+        
+        const $ = cheerio.load(html);
         let playerUrl = "";
 
-        // Busca profunda por iframes que não sejam lixo
         $('iframe').each((i, el) => {
             const src = $(el).attr('src') || $(el).attr('data-src');
-            if (src && !src.includes('facebook') && !src.includes('google') && (src.includes('player') || src.includes('iframe') || src.includes('biz'))) {
+            // Filtro rigoroso: precisa ser do domínio assistir.biz e não ser Facebook
+            if (src && src.includes('biz/iframe') && !src.includes('facebook')) {
                 playerUrl = src.startsWith('//') ? 'https:' + src : src;
             }
         });
 
         if (playerUrl) {
-            return res.json({ success: true, url: playerUrl });
+            return res.json({
+                success: true,
+                url: playerUrl,
+                info: "Acessado via Proxy para evitar bloqueio 404"
+            });
         }
 
-        res.status(404).json({ success: false, message: "Página carregou, mas o player sumiu." });
+        res.status(404).json({ success: false, message: "Página aberta, mas player não encontrado." });
 
     } catch (e) {
         res.status(500).json({ 
             success: false, 
-            message: "O site bloqueou o servidor da Render.",
-            status: e.response ? e.response.status : "Timeout"
+            message: "O site continua bloqueando mesmo via Proxy.",
+            error: e.message 
         });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor recalibrado!"));
+app.listen(PORT, () => console.log("Motor com Proxy Ativado!"));
