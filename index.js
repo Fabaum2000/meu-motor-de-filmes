@@ -6,10 +6,10 @@ const app = express();
 
 app.use(cors());
 
-// Agora a rota aceita o ID do IMDB (ex: tt1201607)
-app.get('/filme/:imdbId', async (req, res) => {
-    const imdbId = req.params.imdbId;
-    const urlOriginal = `https://embedplay.click/filme/${imdbId}`;
+// Esta rota agora aceita TANTO /filme/ quanto /movie/
+app.get(['/filme/:id', '/movie/:id'], async (req, res) => {
+    const id = req.params.id;
+    const urlOriginal = `https://embedplay.click/filme/${id}`;
 
     try {
         const response = await axios.get(urlOriginal, {
@@ -20,14 +20,12 @@ app.get('/filme/:imdbId', async (req, res) => {
         });
 
         const $ = cheerio.load(response.data);
-        
-        // No EmbedPlay, o player geralmente está em um iframe ou em um botão de embed
         let playerUrl = "";
 
-        $('iframe').each((i, el) => {
-            const src = $(el).attr('src') || $(el).attr('data-src');
-            // Filtramos para pegar o link que realmente contém o player de vídeo
-            if (src && !src.includes('facebook') && !src.includes('google')) {
+        // Procura por iframes ou links de player
+        $('iframe, a, source').each((i, el) => {
+            const src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('href');
+            if (src && !src.includes('facebook') && !src.includes('google') && (src.includes('embed') || src.includes('player'))) {
                 playerUrl = src.startsWith('//') ? 'https:' + src : src;
             }
         });
@@ -36,21 +34,20 @@ app.get('/filme/:imdbId', async (req, res) => {
             return res.json({
                 success: true,
                 url: playerUrl,
-                imdb: imdbId
+                id: id
             });
         }
 
-        // Se não achou iframe, o link pode estar no próprio botão do site
-        res.status(404).json({ success: false, message: "Player não encontrado nesta página." });
+        res.status(404).json({ success: false, message: "Player não encontrado." });
 
     } catch (e) {
         res.status(500).json({ 
             success: false, 
-            message: "Erro ao acessar o EmbedPlay.",
+            message: "Erro na conexão com EmbedPlay.",
             error: e.message 
         });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor EmbedPlay Online!"));
+app.listen(PORT, () => console.log("Motor Universal Online!"));
