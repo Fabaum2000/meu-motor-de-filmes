@@ -1,5 +1,6 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const cors = require('cors');
 const app = express();
 
@@ -8,43 +9,46 @@ app.use(cors());
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
     const urlOriginal = `https://assistir.biz/filme/${slug}`;
-    
-    // Abre o navegador invisível
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
 
     try {
-        const page = await browser.newPage();
-        let videoLink = null;
-
-        // "Escuta" as requisições de rede (Igual o Video DownloadHelper)
-        page.on('request', request => {
-            const url = request.url();
-            // Se achar um link de vídeo, salva ele
-            if (url.includes('.m3u8') || url.includes('.mp4')) {
-                videoLink = url;
+        // Busca a página do filme
+        const resp1 = await axios.get(urlOriginal, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const $ = cheerio.load(resp1.data);
+        
+        let playerUrl = "";
+        $('iframe').each((i, el) => {
+            const src = $(el).attr('src') || $(el).attr('data-src');
+            // Pega apenas o link do player interno
+            if (src && src.includes('assistir.biz/iframe')) {
+                playerUrl = src.startsWith('//') ? 'https:' + src : src;
             }
         });
 
-        // Entra no site e espera o player carregar
-        await page.goto(urlOriginal, { waitUntil: 'networkidle2', timeout: 60000 });
-        
-        // Espera um pouco para o script do player gerar o link
-        await new Promise(r => setTimeout(r, 5000));
+        if (playerUrl) {
+            // Agora entramos no player e buscamos o link do vídeo puro (.mp4 ou .m3u8)
+            const resp2 = await axios.get(playerUrl, { headers: { 'Referer': urlOriginal } });
+            
+            // Regex para capturar links de vídeo em scripts
+            const regexVideo = /(https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)/i;
+            const match = resp2.data.match(regexVideo);
 
-        await browser.close();
-
-        if (videoLink) {
-            res.json({ success: true, url: videoLink, type: "direct_file" });
-        } else {
-            res.status(404).json({ success: false, message: "Não foi possível farejar o link direto." });
+            if (match) {
+                return res.json({ 
+                    success: true, 
+                    url: match[1], 
+                    type: match[1].includes('m3u8') ? "hls" : "mp4" 
+                });
+            }
+            
+            // Se o link direto estiver muito escondido, devolvemos o iframe mas sem o lixo em volta
+            return res.json({ success: true, url: playerUrl, type: "iframe_clean" });
         }
+        
+        res.status(404).json({ success: false, message: "Filme não encontrado no site original." });
     } catch (e) {
-        await browser.close();
-        res.status(500).json({ success: false, message: "Erro no servidor de farejamento." });
+        res.status(500).json({ success: false, message: "O motor falhou ao tentar buscar o vídeo." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Sniffer Profissional Online!"));
+app.listen(PORT, () => console.log("Sniffer Leve Online!"));
