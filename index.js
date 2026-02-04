@@ -6,49 +6,56 @@ const app = express();
 
 app.use(cors());
 
+// Esta função ajuda a API a "mentir" para o site original
+const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+};
+
 app.get('/movie/:slug', async (req, res) => {
     const slug = req.params.slug;
     const urlOriginal = `https://assistir.biz/filme/${slug}`;
 
     try {
-        // Busca a página do filme
-        const resp1 = await axios.get(urlOriginal, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        // Tenta pegar a página com o disfarce de navegador
+        const resp1 = await axios.get(urlOriginal, { headers });
         const $ = cheerio.load(resp1.data);
         
         let playerUrl = "";
         $('iframe').each((i, el) => {
             const src = $(el).attr('src') || $(el).attr('data-src');
-            // Pega apenas o link do player interno
             if (src && src.includes('assistir.biz/iframe')) {
                 playerUrl = src.startsWith('//') ? 'https:' + src : src;
             }
         });
 
         if (playerUrl) {
-            // Agora entramos no player e buscamos o link do vídeo puro (.mp4 ou .m3u8)
-            const resp2 = await axios.get(playerUrl, { headers: { 'Referer': urlOriginal } });
+            // Se achou o player, tenta entrar nele usando o filme como "Referer"
+            const resp2 = await axios.get(playerUrl, { 
+                headers: { ...headers, 'Referer': urlOriginal } 
+            });
             
-            // Regex para capturar links de vídeo em scripts
             const regexVideo = /(https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)/i;
             const match = resp2.data.match(regexVideo);
 
             if (match) {
-                return res.json({ 
-                    success: true, 
-                    url: match[1], 
-                    type: match[1].includes('m3u8') ? "hls" : "mp4" 
-                });
+                return res.json({ success: true, url: match[1], type: "direct" });
             }
             
-            // Se o link direto estiver muito escondido, devolvemos o iframe mas sem o lixo em volta
-            return res.json({ success: true, url: playerUrl, type: "iframe_clean" });
+            return res.json({ success: true, url: playerUrl, type: "iframe" });
         }
         
-        res.status(404).json({ success: false, message: "Filme não encontrado no site original." });
+        res.status(404).json({ success: false, message: "URL do player não encontrada." });
     } catch (e) {
-        res.status(500).json({ success: false, message: "O motor falhou ao tentar buscar o vídeo." });
+        // Se der erro, vamos ver o que o site respondeu exatamente
+        res.status(500).json({ 
+            success: false, 
+            message: "Bloqueio de segurança do site original.",
+            error: e.response ? e.response.status : "Offline"
+        });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Sniffer Leve Online!"));
+app.listen(PORT, () => console.log("Motor camuflado online!"));
