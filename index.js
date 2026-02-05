@@ -1,22 +1,39 @@
 const express = require('express');
 const app = express();
 
-// Rota de Embed Direto do Superflix
-app.get('/embed/:id', (req, res) => {
-    const id = req.params.id;
-    const finalUrl = `https://superflixapi.cv/filme/${id}`;
+// Rota para Harry Potter ou qualquer outro filme do assistir.biz
+app.get('/player/:slug', (req, res) => {
+    const slug = req.params.slug;
+    const playerNum = req.query.p || '1'; // Padrão é player 1
+    
+    // Monta a URL baseada no que você me mandou
+    const finalUrl = `https://assistir.biz/iframe/${slug}?player=${playerNum}`;
 
-    // Retorna a página com o player ocupando a tela inteira
     res.send(`
         <!DOCTYPE html>
         <html lang="pt-br">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Player Superflix - SoulLyricsBR</title>
+            <title>Player Fullscreen - SoulLyricsBR</title>
             <style>
-                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-                iframe { width: 100%; height: 100%; border: 0; }
+                /* Remove todos os espaços e margens da tela */
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                
+                body, html { 
+                    width: 100%; 
+                    height: 100%; 
+                    overflow: hidden; 
+                    background-color: #000; 
+                }
+
+                /* Faz o iframe ocupar 100% da visão do usuário */
+                iframe { 
+                    width: 100vw; 
+                    height: 100vh; 
+                    border: none;
+                    display: block;
+                }
             </style>
         </head>
         <body>
@@ -32,10 +49,5 @@ app.get('/embed/:id', (req, res) => {
     `);
 });
 
-// Página inicial de status
-app.get('/', (req, res) => {
-    res.send("<h1>Motor Superflix Online</h1><p>Use /embed/ID para gerar o player.</p>");
-});
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Motor Superflix rodando na porta " + PORT));
+app.listen(PORT, () => console.log("Player Fullscreen Online!"));
